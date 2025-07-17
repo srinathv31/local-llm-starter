@@ -13,16 +13,20 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState<modelID>(defaultModel);
   const { messages, input, handleInputChange, handleSubmit, status, stop } =
     useChat({
+      api: "/api/llm-chat",
       maxSteps: 5,
-      body: {
-        selectedModel,
-      },
+      // body: {
+      //   selectedModel,
+      // },
+      experimental_prepareRequestBody: (body) => ({
+        prompt: body.messages[body.messages.length - 1]?.content || "",
+      }),
       onError: (error) => {
         toast.error(
           error.message.length > 0
             ? error.message
             : "An error occured, please try again later.",
-          { position: "top-center", richColors: true },
+          { position: "top-center", richColors: true }
         );
       },
     });
