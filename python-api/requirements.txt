@@ -8,6 +8,7 @@ email_validator==2.2.0
 fastapi==0.116.1
 fastapi-cli==0.0.8
 fastapi-cloud-cli==0.1.4
+fastapi-cors==0.0.6
 filelock==3.18.0
 fsspec==2025.7.0
 h11==0.16.0

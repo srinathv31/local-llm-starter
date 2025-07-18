@@ -13,15 +13,25 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState<modelID>(defaultModel);
   const { messages, input, handleInputChange, handleSubmit, status, stop } =
     useChat({
-      api: "/api/llm-chat",
+      api:
+        selectedModel === "deepseek-r1-distill-qwen-1.5b"
+          ? "/api/llm-chat"
+          : "/api/chat",
       maxSteps: 5,
-      // body: {
-      //   selectedModel,
-      // },
-      experimental_prepareRequestBody: (body) => ({
-        prompt: body.messages[body.messages.length - 1]?.content || "",
-      }),
+      body:
+        selectedModel !== "deepseek-r1-distill-qwen-1.5b"
+          ? {
+              selectedModel,
+            }
+          : undefined,
+      experimental_prepareRequestBody:
+        selectedModel === "deepseek-r1-distill-qwen-1.5b"
+          ? (body) => ({
+              prompt: body.messages[body.messages.length - 1]?.content || "",
+            })
+          : undefined,
       onError: (error) => {
+        console.log(error);
         toast.error(
           error.message.length > 0
             ? error.message
