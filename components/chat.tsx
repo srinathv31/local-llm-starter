@@ -48,6 +48,11 @@ export default function Chat() {
       <Header />
       {messages.length === 0 ? (
         <div className="max-w-xl mx-auto w-full">
+          <div className="relative text-center mb-8">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent relative z-10">
+              Supercharged with AI
+            </h1>
+          </div>
           <ProjectOverview />
         </div>
       ) : (
@@ -66,6 +71,14 @@ export default function Chat() {
           status={status}
           stop={stop}
         />
+        {messages.length > 0 && (
+          <div className="text-left mt-2 ml-4">
+            <p className="text-md font-medium bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 bg-clip-text text-transparent">
+              Supercharged with AI{" "}
+              <span className="bg-none text-black dark:text-white">🔎</span>
+            </p>
+          </div>
+        )}
       </form>
     </div>
   );
