@@ -33,16 +33,16 @@ if hasattr(model, 'half'):
     model = model.half()  # Use half precision
 
 async def generate(prompt: str):
+    # Use a simpler chat template that doesn't include <think> in the input
     inputs = tokenizer.apply_chat_template(
         [
-            {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt}
         ],
         return_tensors="pt"
     ).to(model.device)
 
     # Use the model's generate method with streaming for better performance
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=False, timeout=10)
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, timeout=10)
     
     # Run generation in a separate thread
     generation_thread = threading.Thread(
@@ -61,15 +61,10 @@ async def generate(prompt: str):
     generation_thread.start()
 
     # Stream tokens as they're generated
-    input_length = inputs.shape[1]  # Length of the input prompt
-    token_count = 0
+    # Start with the opening <think> tag
+    yield f'0:{json.dumps("<think>")}\n'.encode('utf-8')
     
     for token in streamer:
-        token_count += 1
-        # Skip tokens that are part of the input prompt
-        if token_count <= input_length:
-            continue
-            
         if token.strip():
             # Ollama format: 0:"token" (JSON string)
             yield f'0:{json.dumps(token)}\n'.encode('utf-8')
