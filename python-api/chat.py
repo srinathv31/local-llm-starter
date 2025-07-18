@@ -33,10 +33,17 @@ if hasattr(model, 'half'):
     model = model.half()  # Use half precision
 
 async def generate(prompt: str):
-    # Use a simpler chat template that doesn't include <think> in the input
+    # Create a system message that's simpler since we'll force the format
+    system_message = "You are a helpful assistant. Provide clear and accurate answers."
+    
+    # Manually prepend <think> tag but let the model close it naturally
+    modified_prompt = f"<think>Let me think about this step by step:\n\n{prompt}\n\nI need to analyze this question carefully and provide a well-reasoned response."
+    
+    # Use a chat template that includes the system message and user prompt
     inputs = tokenizer.apply_chat_template(
         [
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": modified_prompt}
         ],
         return_tensors="pt"
     ).to(model.device)
@@ -49,7 +56,7 @@ async def generate(prompt: str):
         target=model.generate,
         kwargs=dict(
             input_ids=inputs,
-            max_new_tokens=256,
+            max_new_tokens=1024,
             temperature=0.7,
             do_sample=True,
             pad_token_id=tokenizer.eos_token_id,
@@ -59,15 +66,48 @@ async def generate(prompt: str):
         daemon=True
     )
     generation_thread.start()
-
-    # Stream tokens as they're generated
-    # Start with the opening <think> tag
-    yield f'0:{json.dumps("<think>")}\n'.encode('utf-8')
     
+    # Track the full response and current state
+    full_response = ""
+    has_sent_reasoning = False
+    message_id = "msg-" + "".join([str(ord(c)) for c in str(hash(prompt))[:8]])
+    
+    # Send message ID first
+    yield f'f:{{"messageId":"{message_id}"}}\n'.encode('utf-8')
+    
+    # Stream tokens as they're generated
     for token in streamer:
         if token.strip():
-            # Ollama format: 0:"token" (JSON string)
-            yield f'0:{json.dumps(token)}\n'.encode('utf-8')
+            full_response += token
+            
+            # Since we manually prepended <think> tag, we know the format
+            # Check if we're still in the thinking phase
+            if not has_sent_reasoning:
+                # Look for the end of thinking
+                thinking_end = full_response.find("</think>")
+                if thinking_end != -1:
+                    # Thinking is complete, send all thinking content as reasoning
+                    thinking_content = full_response[:thinking_end]
+                    # Send thinking content as a single chunk with proper JSON escaping
+                    if thinking_content.strip():
+                        escaped_content = json.dumps(thinking_content)[1:-1]  # Remove outer quotes
+                        yield f'g:"{escaped_content}"\n'.encode('utf-8')
+                    has_sent_reasoning = True
+                    # Send remaining content as response, but skip the </think> tag itself
+                    response_content = full_response[thinking_end + 8:]  # 8 = len("</think>")
+                    if response_content.strip():
+                        # Send response content as 0: prefix with proper JSON escaping
+                        escaped_content = json.dumps(response_content)[1:-1]  # Remove outer quotes
+                        yield f'0:"{escaped_content}"\n'.encode('utf-8')
+                else:
+                    # Still in thinking phase, send token as reasoning with proper JSON escaping
+                    escaped_token = json.dumps(token)[1:-1]  # Remove outer quotes
+                    yield f'g:"{escaped_token}"\n'.encode('utf-8')
+            else:
+                # Already sent reasoning, now sending response with proper JSON escaping
+                escaped_token = json.dumps(token)[1:-1]  # Remove outer quotes
+                yield f'0:"{escaped_token}"\n'.encode('utf-8')
+            
             # Small delay to allow other tasks to run
             await asyncio.sleep(0.001)
     
@@ -75,8 +115,8 @@ async def generate(prompt: str):
     generation_thread.join()
     
     # Send completion signal
-    yield f'e:{{"finishReason":"stop"}}\n'.encode('utf-8')
-    yield f'd:{{"finishReason":"stop"}}\n'.encode('utf-8')
+    yield f'e:{{"finishReason":"stop","usage":{{"promptTokens":null,"completionTokens":null}},"isContinued":false}}\n'.encode('utf-8')
+    yield f'd:{{"finishReason":"stop","usage":{{"promptTokens":null,"completionTokens":null}}}}\n'.encode('utf-8')
 
 @app.post("/llm")
 async def llm(body: dict):

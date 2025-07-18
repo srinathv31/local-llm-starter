@@ -29,7 +29,7 @@ export async function POST(req: Request) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          // The Python API now returns Ollama format directly, so we can pass it through
+          // Pass through the AI SDK format directly
           controller.enqueue(value);
         }
       } catch (error) {
