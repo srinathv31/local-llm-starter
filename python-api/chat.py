@@ -20,7 +20,17 @@ app.add_middleware(
 model_id = '/Users/srinathvenkatesh/Documents/CodeProjects/AI/models/DeepSeek-R1-Distill-Qwen-1.5B'
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-model = AutoModelForCausalLM.from_pretrained(model_id).to("cuda" if torch.cuda.is_available() else "cpu")
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,  # Use half precision for speed
+    device_map="auto",  # Let transformers handle device placement
+    low_cpu_mem_usage=True,  # Reduce memory usage
+)
+
+# Enable optimizations
+model.eval()  # Set to evaluation mode
+if hasattr(model, 'half'):
+    model = model.half()  # Use half precision
 
 async def generate(prompt: str):
     inputs = tokenizer.apply_chat_template(
@@ -31,29 +41,43 @@ async def generate(prompt: str):
         return_tensors="pt"
     ).to(model.device)
 
-    # Generate tokens one by one for real-time streaming
-    generated_ids = []
-    for _ in range(256):  # max_new_tokens
-        # Get the next token
-        with torch.no_grad():
-            outputs = model(input_ids=torch.cat([inputs, torch.tensor([generated_ids]).to(model.device)], dim=1) if generated_ids else inputs)
-            next_token_logits = outputs.logits[:, -1, :]
-            next_token = torch.multinomial(torch.softmax(next_token_logits / 0.7, dim=-1), num_samples=1)
-            generated_ids.append(next_token.item())
-        
-        # Decode the token
-        token = tokenizer.decode([next_token.item()], skip_special_tokens=False)
-        
-        # Skip special tokens and empty tokens
+    # Use the model's generate method with streaming for better performance
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=False, timeout=10)
+    
+    # Run generation in a separate thread
+    generation_thread = threading.Thread(
+        target=model.generate,
+        kwargs=dict(
+            input_ids=inputs,
+            max_new_tokens=256,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id,
+            streamer=streamer,
+            use_cache=True,  # Enable KV cache for speed
+        ),
+        daemon=True
+    )
+    generation_thread.start()
+
+    # Stream tokens as they're generated
+    input_length = inputs.shape[1]  # Length of the input prompt
+    token_count = 0
+    
+    for token in streamer:
+        token_count += 1
+        # Skip tokens that are part of the input prompt
+        if token_count <= input_length:
+            continue
+            
         if token.strip():
             # Ollama format: 0:"token" (JSON string)
             yield f'0:{json.dumps(token)}\n'.encode('utf-8')
-            # Force immediate flush
-            await asyncio.sleep(0)
-        
-        # Check for end of generation
-        if next_token.item() == tokenizer.eos_token_id:
-            break
+            # Small delay to allow other tasks to run
+            await asyncio.sleep(0.001)
+    
+    # Wait for generation to complete
+    generation_thread.join()
     
     # Send completion signal
     yield f'e:{{"finishReason":"stop"}}\n'.encode('utf-8')
@@ -77,4 +101,14 @@ async def llm(body: dict):
     )
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Enable optimizations for faster inference
+    torch.backends.cudnn.benchmark = True  # Optimize for fixed input sizes
+    torch.backends.cuda.matmul.allow_tf32 = True  # Use TensorFloat-32 for faster matrix multiplication
+    
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        workers=1,  # Single worker for better memory management
+        loop="asyncio"
+    )
