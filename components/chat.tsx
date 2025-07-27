@@ -4,6 +4,7 @@ import { defaultModel, type modelID } from "@/ai/providers";
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
 import { Textarea } from "./textarea";
+import { FileUpload } from "./file-upload";
 import { ProjectOverview } from "./project-overview";
 import { Messages } from "./messages";
 import { Header } from "./header";
@@ -11,6 +12,9 @@ import { toast } from "sonner";
 
 export default function Chat() {
   const [selectedModel, setSelectedModel] = useState<modelID>(defaultModel);
+  const [fileContent, setFileContent] = useState<string | undefined>(undefined);
+  const [fileName, setFileName] = useState<string | undefined>(undefined);
+
   const { messages, input, handleInputChange, handleSubmit, status, stop } =
     useChat({
       api:
@@ -28,6 +32,7 @@ export default function Chat() {
         selectedModel === "deepseek-r1-distill-qwen-1.5b"
           ? (body) => ({
               prompt: body.messages[body.messages.length - 1]?.content || "",
+              fileContent: fileContent,
             })
           : undefined,
       onError: (error) => {
@@ -42,6 +47,14 @@ export default function Chat() {
     });
 
   const isLoading = status === "streaming" || status === "submitted";
+
+  const handleFileChange = (
+    content: string | undefined,
+    name: string | undefined
+  ) => {
+    setFileContent(content);
+    setFileName(name);
+  };
 
   return (
     <div className="h-dvh flex flex-col justify-center w-full stretch">
@@ -70,7 +83,9 @@ export default function Chat() {
           isLoading={isLoading}
           status={status}
           stop={stop}
-        />
+        >
+          <FileUpload onFileChange={handleFileChange} disabled={isLoading} />
+        </Textarea>
         {messages.length > 0 && (
           <div className="text-left mt-2 ml-4">
             <p className="text-md font-medium bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 bg-clip-text text-transparent">

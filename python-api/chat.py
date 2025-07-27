@@ -32,12 +32,16 @@ model.eval()  # Set to evaluation mode
 if hasattr(model, 'half'):
     model = model.half()  # Use half precision
 
-async def generate(prompt: str):
+async def generate(prompt: str, file_content: str = None):
     # Create a system message that's simpler since we'll force the format
-    system_message = "You are a helpful assistant. Provide clear and accurate answers."
+    system_message = "You are a helpful assistant who can analyze files and help with any questions the user has. You may use markdown to format your response."
     
-    # Manually prepend <think> tag but let the model close it naturally
-    modified_prompt = f"<think>Let me think about this step by step:\n\n{prompt}\n\nI need to analyze this question carefully and provide a well-reasoned response."
+    # Prepare the prompt with file content if available
+    if file_content:
+        modified_prompt = f"<think>Let me think about this step by step:\n\nFile content:\n{file_content}\n\nUser question: {prompt}\n\nI need to analyze this file content and question carefully and provide a well-reasoned response."
+    else:
+        # Manually prepend <think> tag but let the model close it naturally
+        modified_prompt = f"<think>Let me think about this step by step:\n\n{prompt}\n\nI need to analyze this question carefully and provide a well-reasoned response."
     
     # Use a chat template that includes the system message and user prompt
     inputs = tokenizer.apply_chat_template(
@@ -120,8 +124,11 @@ async def generate(prompt: str):
 
 @app.post("/llm")
 async def llm(body: dict):
+    prompt = body.get("prompt", "")
+    file_content = body.get("fileContent", None)
+    
     async def generate_with_flush():
-        async for chunk in generate(body["prompt"]):
+        async for chunk in generate(prompt, file_content):
             yield chunk
             # Force immediate flush
             await asyncio.sleep(0)

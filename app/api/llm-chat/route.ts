@@ -1,5 +1,5 @@
 export async function POST(req: Request) {
-  const { prompt } = await req.json();
+  const { prompt, fileContent } = await req.json();
 
   const upstream = await fetch("http://localhost:8000/llm", {
     method: "POST",
@@ -8,6 +8,7 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       prompt,
+      fileContent,
     }),
   });
 

@@ -11,6 +11,7 @@ interface InputProps {
   stop: () => void;
   selectedModel: modelID;
   setSelectedModel: (model: modelID) => void;
+  children?: React.ReactNode;
 }
 
 export const Textarea = ({
@@ -21,6 +22,7 @@ export const Textarea = ({
   stop,
   selectedModel,
   setSelectedModel,
+  children,
 }: InputProps) => {
   return (
     <div className="relative w-full pt-4">
@@ -42,6 +44,7 @@ export const Textarea = ({
           }
         }}
       />
+      {children}
       <ModelPicker
         setSelectedModel={setSelectedModel}
         selectedModel={selectedModel}
